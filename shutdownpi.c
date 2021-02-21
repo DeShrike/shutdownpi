@@ -34,6 +34,7 @@ gpio -g read 17
 0 = pressed : 1 = released
 */
 
+#define LEDCOUNT  3
 #define delayMilliseconds     delay
 #define BILLION  1000000000.0
 
@@ -83,11 +84,11 @@ void advance()
    currentLed = currentLed + direction;
    if (currentLed < 0)
    {
-      currentLed = 2;
+      currentLed = LEDCOUNT;
    }
 
-   currentLed = currentLed % 3;
-      
+   currentLed = currentLed % LEDCOUNT;
+
    digitalWrite(ledPin1, currentLed == 0 ? HIGH : LOW);
    digitalWrite(ledPin2, currentLed == 1 ? HIGH : LOW);
    digitalWrite(ledPin3, currentLed == 2 ? HIGH : LOW);
