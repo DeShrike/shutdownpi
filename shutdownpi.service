@@ -9,7 +9,8 @@ Restart=always
 RestartSec=5
 User=pi
 ExecStart=/usr/bin/shutdownpi
+WorkingDirectory=/home/pi
 
 [Install]
-WanterBy=multi-user.target
+WantedBy=multi-user.target
 

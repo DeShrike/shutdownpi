@@ -80,7 +80,14 @@ void cleanup()
 
 void advance()
 {
-   currentLed = (currentLed + direction) % 3;
+   currentLed = currentLed + direction;
+   if (currentLed < 0)
+   {
+      currentLed = 2;
+   }
+
+   currentLed = currentLed % 3;
+      
    digitalWrite(ledPin1, currentLed == 0 ? HIGH : LOW);
    digitalWrite(ledPin2, currentLed == 1 ? HIGH : LOW);
    digitalWrite(ledPin3, currentLed == 2 ? HIGH : LOW);
@@ -124,6 +131,7 @@ void handle_short_push()
    else if (state == STATE_SHUTTINGDOWN)
    {
       printf("sudo shutdown -c \n");
+      system("sudo shutdown -c");
       state = STATE_RUNNING;
    }
 }

@@ -18,6 +18,7 @@ clean:
 install: shutdownpi shutdownpi.service
 	sudo cp shutdownpi /usr/bin
 	sudo cp shutdownpi.service /etc/systemd/system
+	sudo systemctl daemon-reload
 
 start:
 	sudo systemctl start shutdownpi
