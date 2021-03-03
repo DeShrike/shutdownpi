@@ -30,17 +30,17 @@ static volatile int keepRunning = 1;
 #define SHORT_PRESS     0.5
 #define LONG_PRESS      3.0
 #define WAITING_TIMEOUT 5.0
-#define MOVE_TIME       60.0    // Go from STATE_MOVE to STATE_SLEEP after this number of seconds
+#define MOVE_TIME       30.0    // Go from STATE_MOVE to STATE_SLEEP after this number of seconds
 
 #define STEPDELAY       40  // Delay between steps
 
-#define MOVESPEED       10  // 10 * STEPSPEED 
+#define INITIALMOVESPEED       10  // 10 * STEPSPEED 
 #define WAITSPEED       3
 #define COUNTDOWNSPEED  2
 #define SLEEPSPEED      100
 
 int currentStep = 0;
-
+int moveSpeed = INITIALMOVESPEED;
 int currentLed = -1;
 int direction = 1;
 
@@ -109,6 +109,7 @@ void startMoveState()
 {
     state = STATE_MOVE;
     clock_gettime(CLOCK_REALTIME, &time_move_start);
+    moveSpeed = INITIALMOVESPEED;
 }
 
 void handle_short_push()
@@ -182,13 +183,21 @@ int main()
     {
         if (state == STATE_MOVE)
         {
-            if (currentStep % MOVESPEED == 0)
+            if (currentStep % moveSpeed == 0)
             {
                 move();
                 double duration = ellapsedSince(&time_move_start);
                 if (duration > MOVE_TIME)
                 {
-                    state = STATE_SLEEP;
+                	if (moveSpeed <= 2)
+                	{
+                    	state = STATE_SLEEP;
+                    }
+                    else
+                    {
+                    	moveSpeed--;
+					    clock_gettime(CLOCK_REALTIME, &time_move_start);
+                    }
                 }
             }
         }
