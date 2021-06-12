@@ -7,14 +7,14 @@
 #include <netinet/in.h>
 #include <netdb.h>
 #include <arpa/inet.h>
-#include "utils.h"
+#include "http.h"
 
 char getRequest[1000] = {0};
 char response[1000];
 struct hostent *server;
 struct sockaddr_in serveraddr;
 
-int get(char* hostname, int port, char* request)
+int httpget(char* hostname, int port, char* request)
 {
     sprintf(getRequest, "GET %s HTTP/1.1\r\nHost: %s\r\n\r\n", request, hostname);
 
