@@ -6,14 +6,17 @@ all: shutdownpi
 rmbin:
 	rm shutdownpi
 
-shutdownpi: shutdownpi.o utils.o
-	$(CC) -o shutdownpi shutdownpi.o utils.o -l wiringPi
+shutdownpi: shutdownpi.o utils.o http.o
+	$(CC) -o shutdownpi shutdownpi.o utils.o http.o -l wiringPi
 
-shutdownpi.o: shutdownpi.c utils.h
+shutdownpi.o: shutdownpi.c utils.h http.o
 	$(CC) -c -O3 shutdownpi.c
 
 utils.o: utils.c utils.h
 	$(CC) -c -O3 utils.c
+
+http.o: http.c http.h
+	$(CC) -c -O3 http.c
 
 clean:
 	rm *.o
