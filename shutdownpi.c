@@ -35,7 +35,7 @@ static volatile int keepRunning = 1;
 #define WAITING_TIMEOUT     5.0
 #define MOVE_TIME           30.0    // Go from STATE_MOVE to STATE_SLEEP after this number of seconds
 
-#define STEPDELAY           40  // Delay between steps
+#define STEPDELAY           50  // Delay between steps
 
 #define INITIALMOVESPEED    10  // 10 * STEPSPEED
 #define WAITSPEED           3
@@ -393,6 +393,9 @@ void loop()
 
     check_button_1();
     check_button_2();
+
+    delayMilliseconds(STEPDELAY);
+    currentStep++;
 }
 
 int main()
@@ -421,8 +424,6 @@ int main()
     while (keepRunning)
     {
         loop();
-        delayMilliseconds(STEPDELAY);
-        currentStep++;
     }
 
     printf("\nStopping\n");

@@ -10,13 +10,13 @@ shutdownpi: shutdownpi.o utils.o http.o
 	$(CC) -o shutdownpi shutdownpi.o utils.o http.o -l wiringPi
 
 shutdownpi.o: shutdownpi.c utils.h http.o
-	$(CC) -c -O3 shutdownpi.c
+	$(CC) -c -Wall -O3 shutdownpi.c
 
 utils.o: utils.c utils.h
-	$(CC) -c -O3 utils.c
+	$(CC) -c -Wall -O3 utils.c
 
 http.o: http.c http.h
-	$(CC) -c -O3 http.c
+	$(CC) -c -Wall -O3 http.c
 
 clean:
 	rm *.o
