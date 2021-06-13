@@ -13,6 +13,8 @@ static volatile int keepRunning = 1;
 // gcc -lwiringPi
 // gcc -lwiringPiDev
 
+// Checkout https://www.youtube.com/watch?v=gymfmJIrc3g
+
 #define delayMilliseconds     delay
 
 #define LEDCOUNT              4
@@ -72,10 +74,24 @@ void intHandler(int dummy)
 
 void cleanup()
 {
+    printf("Cleanup\n");
+
     digitalWrite(ledPin1, LOW);
     digitalWrite(ledPin2, LOW);
     digitalWrite(ledPin3, LOW);
     digitalWrite(ledPin4, LOW);
+
+    delayMilliseconds(100);
+
+    pinMode(ledPin1, INPUT);
+    pinMode(ledPin2, INPUT);
+    pinMode(ledPin3, INPUT);
+    pinMode(ledPin4, INPUT);
+
+    delayMilliseconds(100);
+
+    pullUpDnControl(btnPin1, PUD_DOWN);
+    pullUpDnControl(btnPin2, PUD_DOWN);
 }
 
 void move()
@@ -174,6 +190,16 @@ void handle_long_push_1()
     }
 }
 
+void handle_super_long_push_1()
+{
+    printf("Button 1: Super Long Press\n");
+    if (state == STATE_MOVE)
+    {
+        clock_gettime(CLOCK_REALTIME, &time_waiting_start);
+        state = STATE_WAITFORCONFIRM;
+    }
+}
+
 void handle_short_push_2()
 {
     printf("Button 2: Short Press\n");
@@ -184,11 +210,197 @@ void handle_long_push_2()
     printf("Button 2: Long Press\n");
 }
 
+void handle_super_long_push_2()
+{
+    printf("Button 2: Super Long Press\n");
+}
+
+void check_button_1()
+{
+    ////////////////////////////////////////////////////////////////////////////////
+    // Button 1 ////////////////////////////////////////////////////////////////////
+    ////////////////////////////////////////////////////////////////////////////////
+    if (digitalRead(btnPin1) == HIGH) // Button 1 is not pressed
+    {
+        if (button_1_state == STATE_DOWN)
+        {
+            button_1_state = STATE_RELEASED;
+            clock_gettime(CLOCK_REALTIME, &time_released_1);
+            double duration = calcDuration(&time_pressed_1, &time_released_1);
+            if (duration < SHORT_PRESS)
+            {
+                handle_short_push_1();
+            }
+            else if (duration > LONG_PRESS)
+            {
+            }
+            else
+            {
+                handle_long_push_1();
+            }
+
+            button_1_state = STATE_UP;
+        }
+        else if (button_1_state != STATE_UP)
+        {
+            printf("Strange: Button 1 State is %d\n", button_1_state);
+            button_1_state = STATE_UP;
+        }
+    }
+    else // Button 1 is pressed
+    {
+        if (button_1_state == STATE_PRESSED)
+        {
+            button_1_state = STATE_DOWN;
+        }
+        else if (button_1_state == STATE_UP)
+        {
+            button_1_state = STATE_PRESSED;
+            clock_gettime(CLOCK_REALTIME, &time_pressed_1);
+        }
+        else if (button_1_state == STATE_DOWN)
+        {
+            double duration = ellapsedSince(&time_pressed_1);
+            if (duration > LONG_PRESS)
+            {
+                handle_super_long_push_1();
+            }
+        }
+        else
+        {
+            printf("Hmm, Button 1 State = %d\n", button_1_state);
+        }
+    }
+}
+
+void check_button_2()
+{
+    ////////////////////////////////////////////////////////////////////////////////
+    // Button 2 ////////////////////////////////////////////////////////////////////
+    ////////////////////////////////////////////////////////////////////////////////
+    if (digitalRead(btnPin2) == HIGH) // Button 2 is not pressed
+    {
+        if (button_2_state == STATE_DOWN)
+        {
+            button_2_state = STATE_RELEASED;
+            clock_gettime(CLOCK_REALTIME, &time_released_2);
+            double duration = calcDuration(&time_pressed_2, &time_released_2);
+            if (duration < SHORT_PRESS)
+            {
+                handle_short_push_2();
+            }
+            else if (duration > LONG_PRESS)
+            {
+            }
+            else
+            {
+                handle_long_push_2();
+            }
+
+            button_2_state = STATE_UP;
+        }
+        else if (button_2_state != STATE_UP)
+        {
+            printf("Strange: Button 2 State is %d\n", button_2_state);
+            button_2_state = STATE_UP;
+        }
+    }
+    else // Button 2 is pressed
+    {
+        if (button_2_state == STATE_PRESSED)
+        {
+            button_2_state = STATE_DOWN;
+        }
+        else if (button_2_state == STATE_UP)
+        {
+            button_2_state = STATE_PRESSED;
+            clock_gettime(CLOCK_REALTIME, &time_pressed_2);
+        }
+        else if (button_2_state == STATE_DOWN)
+        {
+            double duration = ellapsedSince(&time_pressed_2);
+            if (duration > LONG_PRESS)
+            {
+                handle_super_long_push_2();
+            }
+        }
+        else
+        {
+            printf("Hmm, Button 2 State = %d\n", button_2_state);
+        }
+    }
+}
+
+void loop()
+{
+    if (state == STATE_MOVE)
+    {
+        if (currentStep % moveSpeed == 0)
+        {
+            move();
+            double duration = ellapsedSince(&time_move_start);
+            if (duration > MOVE_TIME)
+            {
+                if (moveSpeed <= 2)
+                {
+                    state = STATE_SLEEP;
+                }
+                else
+                {
+                    moveSpeed--;
+                    clock_gettime(CLOCK_REALTIME, &time_move_start);
+                }
+            }
+        }
+    }
+    else if (state == STATE_SLEEP)
+    {
+        if (currentStep % SLEEPSPEED == 0)
+        {
+            slaap();
+
+            time_t rawtime;
+            struct tm * timeinfo;
+
+            time(&rawtime);
+            timeinfo = localtime(&rawtime);
+            if (timeinfo->tm_min == 0)
+            {
+                printf("[%d %d %d %d:%d:%d]\n", timeinfo->tm_mday, timeinfo->tm_mon + 1, timeinfo->tm_year + 1900, timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec);
+                startMoveState();
+            }
+        }
+    }
+    else if (state == STATE_WAITFORCONFIRM)
+    {
+        if (currentStep % WAITSPEED == 0)
+        {
+            waitforconfirmation();
+            double duration = ellapsedSince(&time_waiting_start);
+            if (duration > WAITING_TIMEOUT)
+            {
+                startMoveState();
+            }
+        }
+    }
+    else if (state == STATE_SHUTTINGDOWN)
+    {
+        if (currentStep % COUNTDOWNSPEED == 0)
+        {
+            shuttingdown();
+        }
+    }
+
+    check_button_1();
+    check_button_2();
+}
+
 int main()
 {
     signal(SIGKILL, intHandler);
     signal(SIGINT, intHandler);
     signal(SIGTERM, intHandler);
+    signal(SIGHUP, intHandler);
 
     wiringPiSetupGpio();  // setup wih Broadcom numbering
 
@@ -208,188 +420,7 @@ int main()
 
     while (keepRunning)
     {
-        if (state == STATE_MOVE)
-        {
-            if (currentStep % moveSpeed == 0)
-            {
-                move();
-                double duration = ellapsedSince(&time_move_start);
-                if (duration > MOVE_TIME)
-                {
-                    if (moveSpeed <= 2)
-                    {
-                        state = STATE_SLEEP;
-                    }
-                    else
-                    {
-                        moveSpeed--;
-                        clock_gettime(CLOCK_REALTIME, &time_move_start);
-                    }
-                }
-            }
-        }
-        else if (state == STATE_SLEEP)
-        {
-            if (currentStep % SLEEPSPEED == 0)
-            {
-                slaap();
-
-                time_t rawtime;
-                struct tm * timeinfo;
-
-                time(&rawtime);
-                timeinfo = localtime(&rawtime);
-                if (timeinfo->tm_min == 0)
-                {
-                    printf("[%d %d %d %d:%d:%d]\n", timeinfo->tm_mday, timeinfo->tm_mon + 1, timeinfo->tm_year + 1900, timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec);
-                    startMoveState();
-                }
-            }
-        }
-        else if (state == STATE_WAITFORCONFIRM)
-        {
-            if (currentStep % WAITSPEED == 0)
-            {
-                waitforconfirmation();
-                double duration = ellapsedSince(&time_waiting_start);
-                if (duration > WAITING_TIMEOUT)
-                {
-                    startMoveState();
-                }
-            }
-        }
-        else if (state == STATE_SHUTTINGDOWN)
-        {
-            if (currentStep % COUNTDOWNSPEED == 0)
-            {
-                shuttingdown();
-            }
-        }
-
-        ////////////////////////////////////////////////////////////////////////////////
-        // Button 1 ////////////////////////////////////////////////////////////////////
-        ////////////////////////////////////////////////////////////////////////////////
-        if (digitalRead(btnPin1) == HIGH) // Button 1 is not pressed
-        {
-            if (button_1_state == STATE_DOWN)
-            {
-                button_1_state = STATE_RELEASED;
-                clock_gettime(CLOCK_REALTIME, &time_released_1);
-                double duration = calcDuration(&time_pressed_1, &time_released_1);
-                if (duration < SHORT_PRESS)
-                {
-                    handle_short_push_1();
-                }
-                else if (duration > LONG_PRESS)
-                {
-                }
-                else
-                {
-                    handle_long_push_1();
-                }
-
-                button_1_state = STATE_UP;
-            }
-            else if (button_1_state != STATE_UP)
-            {
-                printf("Strange: Button 1 State is %d\n", button_1_state);
-                button_1_state = STATE_UP;
-            }
-        }
-        else // Button 1 is pressed
-        {
-            if (button_1_state == STATE_PRESSED)
-            {
-                button_1_state = STATE_DOWN;
-            }
-            else if (button_1_state == STATE_UP)
-            {
-                button_1_state = STATE_PRESSED;
-                clock_gettime(CLOCK_REALTIME, &time_pressed_1);
-            }
-            else if (button_1_state == STATE_DOWN)
-            {
-                double duration = ellapsedSince(&time_pressed_1);
-                if (duration > LONG_PRESS)
-                {
-                    printf("Button 1: Super Long Press\n");
-                    if (state == STATE_MOVE)
-                    {
-                        clock_gettime(CLOCK_REALTIME, &time_waiting_start);
-                        state = STATE_WAITFORCONFIRM;
-                    }
-                }
-            }
-            else
-            {
-                printf("Hmm, Button 1 State = %d\n", button_1_state);
-            }
-        }
-
-        ////////////////////////////////////////////////////////////////////////////////
-        // Button 2 ////////////////////////////////////////////////////////////////////
-        ////////////////////////////////////////////////////////////////////////////////
-        if (digitalRead(btnPin2) == HIGH) // Button 2 is not pressed
-        {
-            if (button_2_state == STATE_DOWN)
-            {
-                button_2_state = STATE_RELEASED;
-                clock_gettime(CLOCK_REALTIME, &time_released_2);
-                double duration = calcDuration(&time_pressed_2, &time_released_2);
-                if (duration < SHORT_PRESS)
-                {
-                    handle_short_push_2();
-                }
-                else if (duration > LONG_PRESS)
-                {
-                }
-                else
-                {
-                    handle_long_push_2();
-                }
-
-                button_2_state = STATE_UP;
-            }
-            else if (button_2_state != STATE_UP)
-            {
-                printf("Strange: Button 2 State is %d\n", button_2_state);
-                button_2_state = STATE_UP;
-            }
-        }
-        else // Button 2 is pressed
-        {
-            if (button_2_state == STATE_PRESSED)
-            {
-                button_2_state = STATE_DOWN;
-            }
-            else if (button_2_state == STATE_UP)
-            {
-                button_2_state = STATE_PRESSED;
-                clock_gettime(CLOCK_REALTIME, &time_pressed_2);
-            }
-            else if (button_2_state == STATE_DOWN)
-            {
-                double duration = ellapsedSince(&time_pressed_2);
-                if (duration > LONG_PRESS)
-                {
-                    printf("Button 2: Super Long Press\n");
-                    /*
-                    if (state == STATE_MOVE)
-                    {
-                        // clock_gettime(CLOCK_REALTIME, &time_waiting_start);
-                        // state = STATE_WAITFORCONFIRM;
-                    }
-                    */
-                }
-            }
-            else
-            {
-                printf("Hmm, Button 2 State = %d\n", button_2_state);
-            }
-        }
-
-        ////////////////////////////////////////////////////////////////////////////////
-
+        loop();
         delayMilliseconds(STEPDELAY);
         currentStep++;
     }
