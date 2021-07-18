@@ -4,7 +4,9 @@
 #include <signal.h>
 #include <time.h>
 #include <unistd.h>
+#include "shutdownpi.h"
 #include "utils.h"
+#include "config.h"
 #include "http.h"
 
 static volatile int keepRunning = 1;
@@ -15,15 +17,11 @@ static volatile int keepRunning = 1;
 
 // Checkout https://www.youtube.com/watch?v=gymfmJIrc3g
 
+#define CONFIG_FILE           "shutdownpi.ini"
+
 #define delayMilliseconds     delay
 
 #define LEDCOUNT              4
-
-#define STATE_NONE            0
-#define STATE_MOVE            1
-#define STATE_WAITFORCONFIRM  2
-#define STATE_SHUTTINGDOWN    3
-#define STATE_SLEEP           4
 
 #define STATE_UP            10
 #define STATE_PRESSED       11
@@ -41,6 +39,11 @@ static volatile int keepRunning = 1;
 #define WAITSPEED           3
 #define COUNTDOWNSPEED      2
 #define SLEEPSPEED          100
+
+#define PINMODE(p, m)           if (p != 0) { pinMode(p, m); }
+#define PULLUPDNCONTROL(p, m)   if (p != 0) { pullUpDnControl(p, m); }
+#define DIGITALWRITE(p, m)      if (p != 0) { digitalWrite(p, m); }
+#define DIGITALREAD(p)          (p != 0 ? digitalRead(p) : 0)
 
 int currentStep = 0;
 int moveSpeed = INITIALMOVESPEED;
@@ -76,63 +79,63 @@ void cleanup()
 {
     printf("Cleanup\n");
 
-    digitalWrite(ledPin1, LOW);
-    digitalWrite(ledPin2, LOW);
-    digitalWrite(ledPin3, LOW);
-    digitalWrite(ledPin4, LOW);
+    DIGITALWRITE(ledPin1, LOW);
+    DIGITALWRITE(ledPin2, LOW);
+    DIGITALWRITE(ledPin3, LOW);
+    DIGITALWRITE(ledPin4, LOW);
 
     delayMilliseconds(100);
 
-    pinMode(ledPin1, INPUT);
-    pinMode(ledPin2, INPUT);
-    pinMode(ledPin3, INPUT);
-    pinMode(ledPin4, INPUT);
+    PINMODE(ledPin1, INPUT);
+    PINMODE(ledPin2, INPUT);
+    PINMODE(ledPin3, INPUT);
+    PINMODE(ledPin4, INPUT);
 
     delayMilliseconds(100);
 
-    pullUpDnControl(btnPin1, PUD_DOWN);
-    pullUpDnControl(btnPin2, PUD_DOWN);
+    PULLUPDNCONTROL(btnPin1, PUD_DOWN);
+    PULLUPDNCONTROL(btnPin2, PUD_DOWN);
 }
 
 void move()
 {
     currentLed = advanceLed(currentLed, direction, LEDCOUNT);
-    digitalWrite(ledPin1, currentLed == 0 ? HIGH : LOW);
-    digitalWrite(ledPin2, currentLed == 1 ? HIGH : LOW);
-    digitalWrite(ledPin3, currentLed == 2 ? HIGH : LOW);
-    digitalWrite(ledPin4, currentLed == 3 ? HIGH : LOW);
+    DIGITALWRITE(ledPin1, currentLed == 0 ? HIGH : LOW);
+    DIGITALWRITE(ledPin2, currentLed == 1 ? HIGH : LOW);
+    DIGITALWRITE(ledPin3, currentLed == 2 ? HIGH : LOW);
+    DIGITALWRITE(ledPin4, currentLed == 3 ? HIGH : LOW);
 }
 
 void slaap()
 {
     currentLed = advanceLed(currentLed, direction, LEDCOUNT);
-    digitalWrite(ledPin1, currentLed == 0 ? HIGH : LOW);
-    digitalWrite(ledPin2, currentLed == 1 ? HIGH : LOW);
-    digitalWrite(ledPin3, currentLed == 2 ? HIGH : LOW);
-    digitalWrite(ledPin4, currentLed == 3 ? HIGH : LOW);
+    DIGITALWRITE(ledPin1, currentLed == 0 ? HIGH : LOW);
+    DIGITALWRITE(ledPin2, currentLed == 1 ? HIGH : LOW);
+    DIGITALWRITE(ledPin3, currentLed == 2 ? HIGH : LOW);
+    DIGITALWRITE(ledPin4, currentLed == 3 ? HIGH : LOW);
     delayMilliseconds(100);
-    digitalWrite(ledPin1, LOW);
-    digitalWrite(ledPin2, LOW);
-    digitalWrite(ledPin3, LOW);
-    digitalWrite(ledPin4, LOW);
+    DIGITALWRITE(ledPin1, LOW);
+    DIGITALWRITE(ledPin2, LOW);
+    DIGITALWRITE(ledPin3, LOW);
+    DIGITALWRITE(ledPin4, LOW);
 }
 
 void waitforconfirmation()
 {
     currentLed = (currentLed + 1) % 2;
-    digitalWrite(ledPin1, LOW);
-    digitalWrite(ledPin2, currentLed == 1 ? HIGH : LOW);
-    digitalWrite(ledPin3, LOW);
-    digitalWrite(ledPin4, LOW);
+    DIGITALWRITE(ledPin1, LOW);
+    DIGITALWRITE(ledPin2, currentLed == 1 ? HIGH : LOW);
+    DIGITALWRITE(ledPin3, LOW);
+    DIGITALWRITE(ledPin4, LOW);
 }
 
 void shuttingdown()
 {
     currentLed = (currentLed + 1) % 2;
-    digitalWrite(ledPin1, currentLed == 1 ? HIGH : LOW);
-    digitalWrite(ledPin2, LOW);
-    digitalWrite(ledPin3, LOW);
-    digitalWrite(ledPin4, LOW);
+    DIGITALWRITE(ledPin1, currentLed == 1 ? HIGH : LOW);
+    DIGITALWRITE(ledPin2, LOW);
+    DIGITALWRITE(ledPin3, LOW);
+    DIGITALWRITE(ledPin4, LOW);
 }
 
 void startMoveState()
@@ -220,7 +223,7 @@ void check_button_1()
     ////////////////////////////////////////////////////////////////////////////////
     // Button 1 ////////////////////////////////////////////////////////////////////
     ////////////////////////////////////////////////////////////////////////////////
-    if (digitalRead(btnPin1) == HIGH) // Button 1 is not pressed
+    if (DIGITALREAD(btnPin1) == HIGH) // Button 1 is not pressed
     {
         if (button_1_state == STATE_DOWN)
         {
@@ -278,7 +281,7 @@ void check_button_2()
     ////////////////////////////////////////////////////////////////////////////////
     // Button 2 ////////////////////////////////////////////////////////////////////
     ////////////////////////////////////////////////////////////////////////////////
-    if (digitalRead(btnPin2) == HIGH) // Button 2 is not pressed
+    if (DIGITALREAD(btnPin2) == HIGH) // Button 2 is not pressed
     {
         if (button_2_state == STATE_DOWN)
         {
@@ -398,7 +401,7 @@ void loop()
     currentStep++;
 }
 
-int main()
+int start(configuration* config)
 {
     signal(SIGKILL, intHandler);
     signal(SIGINT, intHandler);
@@ -407,15 +410,15 @@ int main()
 
     wiringPiSetupGpio();  // setup wih Broadcom numbering
 
-    pinMode(ledPin1, OUTPUT);
-    pinMode(ledPin2, OUTPUT);
-    pinMode(ledPin3, OUTPUT);
-    pinMode(ledPin4, OUTPUT);
+    PINMODE(ledPin1, OUTPUT);
+    PINMODE(ledPin2, OUTPUT);
+    PINMODE(ledPin3, OUTPUT);
+    PINMODE(ledPin4, OUTPUT);
 
-    pinMode(btnPin1, INPUT);
-    pinMode(btnPin2, INPUT);
-    pullUpDnControl(btnPin1, PUD_UP); // Enable pull-up resistor on button
-    pullUpDnControl(btnPin2, PUD_UP); // Enable pull-up resistor on button
+    PINMODE(btnPin1, INPUT);
+    PINMODE(btnPin2, INPUT);
+    PULLUPDNCONTROL(btnPin1, PUD_UP); // Enable pull-up resistor on button
+    PULLUPDNCONTROL(btnPin2, PUD_UP); // Enable pull-up resistor on button
 
     printf("Running! Press Ctrl+C to quit. \n");
 
@@ -430,4 +433,30 @@ int main()
     cleanup();
 
     return 0;
+}
+
+int main(int argc, char* argv[])
+{
+    configuration* config;
+    config = read_config(CONFIG_FILE);
+    if (config == NULL)
+    {
+        printf("Can't load '%s'\n", CONFIG_FILE);
+        return 1;
+    }
+
+    printf("Config loaded from '%s':\n", CONFIG_FILE);
+
+    printf("     led1: %d \n     led2: %d \n     led3: %d \n     led4: %d \n  button1: %d \n  button2: %d \n      fan: %d \n",
+        config->led1Pin, config->led2Pin, config->led3Pin, config->led4Pin,
+        config->button1Pin, config->button2Pin,
+        config->fanPin);
+
+    printf("\nName: %s\n", config->name);
+
+    int ret = 0; // start(config);
+
+    free_config(config);
+
+    return ret;
 }
