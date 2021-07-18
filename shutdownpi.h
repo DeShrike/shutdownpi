@@ -19,8 +19,9 @@ extern "C" {
 #define ACTION_START_RUNNING 	1
 #define ACTION_REVERSE 			2
 #define ACTION_CANCEL_SHUTDOWN 	3
-#define ACTION_START_SHUTDOWN 	4
-#define ACTION_GET 				5
+#define ACTION_REQUEST_SHUTDOWN	4
+#define ACTION_CONFIRM_SHUTDOWN	5
+#define ACTION_GET 				6
 
 
 #ifdef __cplusplus

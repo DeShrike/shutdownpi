@@ -12,8 +12,8 @@ int press_id[] = { PRESS_SHORT, PRESS_LONG, PRESS_HOLD };
 char* states[] = { "IDLE", "RUNNING", "SHUTDOWN_REQUESTED", "SHUTTINGDOWN" };
 int state_id[] = { STATE_SLEEP, STATE_MOVE, STATE_WAITFORCONFIRM, STATE_SHUTTINGDOWN};
 
-char* actions[] = { "START_RUNNING", "REVERSE", "CANCEL_SHUTDOWN", "START_SHUTDOWN", "GET "};
-int action_id[] = { ACTION_START_RUNNING, ACTION_REVERSE, ACTION_CANCEL_SHUTDOWN, ACTION_START_SHUTDOWN, ACTION_GET};
+char* actions[] = { "START_RUNNING", "REVERSE", "CANCEL_SHUTDOWN", "REQUEST_SHUTDOWN", "CONFIRM_SHUTDOWN", "GET "};
+int action_id[] = { ACTION_START_RUNNING, ACTION_REVERSE, ACTION_CANCEL_SHUTDOWN, ACTION_REQUEST_SHUTDOWN, ACTION_CONFIRM_SHUTDOWN, ACTION_GET};
 
 int num_presses = sizeof(presses) / sizeof(char*);
 int num_states = sizeof(states) / sizeof(char*);
@@ -28,11 +28,11 @@ void free_button_config(buttonconfiguration** config)
         {
             if (c->action_param != NULL)
             {
-                printf("Free Action Param %p\n", (void*)c->action_param);
+                // printf("Free Action Param %p\n", (void*)c->action_param);
                 free(c->action_param);
             }
 
-            printf("Free %p\n", (void*)c);
+            // printf("Free %p\n", (void*)c);
             free(c);
         }
     }
@@ -42,26 +42,29 @@ void free_config(configuration* config)
 {
     if (config->name != NULL)
     {
-        printf("Free Name: %p\n", (void*)config->name);
+        // printf("Free Name: %p\n", (void*)config->name);
         free(config->name);
     }
 
     free_button_config(config->buttonconfig);
 
-    printf("Free Config: %p\n", (void*)config);
+    // printf("Free Config: %p\n", (void*)config);
     free(config);
 }
 
-static void try_add_action(configuration* pconfig, int button, int press_id, int state_id, char* value)
+void try_add_action(configuration* pconfig, int button, int press_id, int state_id, char* value)
 {
     char* temp = lskip(value);
     rstrip(temp);
-    printf("Found %d | %d | %d = '%s'\n", button, press_id, state_id, temp);
+    int found = 0;
+
+    // printf("Found %d | %d | %d = '%s'\n", button, press_id, state_id, temp);
     for (int a = 0; a < num_actions; a++)
     {
         if (strncmp(temp, actions[a], strlen(actions[a])) == 0)
         {
-            printf("Action = %d - %s\n", action_id[a], actions[a]);
+            found = 1;
+            // printf("Action = %d - %s\n", action_id[a], actions[a]);
             int ix = -1;
             buttonconfiguration* bc;
             do
@@ -77,7 +80,7 @@ static void try_add_action(configuration* pconfig, int button, int press_id, int
             }
 
             pconfig->buttonconfig[ix] = (buttonconfiguration*)malloc(sizeof(buttonconfiguration));
-            printf("Malloc %p  %d bytes\n", (void*)pconfig->buttonconfig[ix], sizeof(buttonconfiguration));
+            // printf("Malloc %p  %d bytes\n", (void*)pconfig->buttonconfig[ix], sizeof(buttonconfiguration));
 
             pconfig->buttonconfig[ix]->button = button;
             pconfig->buttonconfig[ix]->press_id = press_id;
@@ -87,13 +90,20 @@ static void try_add_action(configuration* pconfig, int button, int press_id, int
             if (strlen(temp) > strlen(actions[a]))
             {
                 pconfig->buttonconfig[ix]->action_param = strdup(temp + strlen(actions[a]));
-                printf("strdup() = %p\n", (void*)pconfig->buttonconfig[ix]->action_param);
+                // printf("strdup() = %p\n", (void*)pconfig->buttonconfig[ix]->action_param);
             }
+
+            return;
         }
+    }
+
+    if (found == 0)
+    {
+        printf("Unknown action: %s\n", temp);
     }
 }
 
-static int handler(void* config, const char* section, const char* name,
+int handler(void* config, const char* section, const char* name,
                    const char* value)
 {
     configuration* pconfig = (configuration*)config;
@@ -139,10 +149,11 @@ static int handler(void* config, const char* section, const char* name,
     else if (MATCH("user", "name"))
     {
         pconfig->name = strdup(value);
-        printf("strdup() name: %p\n", (void*)pconfig->name);
+        // printf("strdup() name: %p\n", (void*)pconfig->name);
     }
     else
     {
+        int found = 0;
         char* sectionname = (char*)malloc(100);
         for (int b = 1; b <= 2; b++)
         {
@@ -161,9 +172,16 @@ static int handler(void* config, const char* section, const char* name,
                             try_add_action(pconfig, b, press_id[p], state_id[s], token);
                             token = strtok(NULL, ",");
                         }
+
+                        found = 1;
                     }
                 }
             }
+        }
+
+        if (found == 0)
+        {
+            printf("Unknown entry: [%s] %s\n", section, name);
         }
 
         free(sectionname);
@@ -173,11 +191,40 @@ static int handler(void* config, const char* section, const char* name,
     return 1;
 }
 
+buttonconfiguration* foundactions[MAX_ACTIONS + 1];
+
+buttonconfiguration** find_actions(configuration* config, int button, int press_id, int state_id)
+{
+    int count = 0;
+    for (int i = 0; i < MAX_ACTIONS + 1; i++)
+    {
+        foundactions[i] = NULL;
+    }
+
+    buttonconfiguration** actions = config->buttonconfig;
+    buttonconfiguration* action = *actions;
+
+    while (action != NULL)
+    {
+        if (action->button == button &&
+            action->press_id == press_id &&
+            action->state_id == state_id)
+        {
+            foundactions[count] = action;
+            count++;
+        }
+
+        action = *(++actions);
+    }
+
+    return foundactions;
+}
+
 configuration* read_config(char* filename)
 {
     configuration* config;
     config = (configuration*)malloc(sizeof(configuration));
-    printf("Alloc Config %p - %d bytes\n", (void*)config, sizeof(configuration));
+    // printf("Alloc Config %p - %d bytes\n", (void*)config, sizeof(configuration));
 
     for (int i = 0; i < MAX_ACTIONS; i++)
     {

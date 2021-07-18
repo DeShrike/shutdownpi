@@ -5,7 +5,7 @@
 extern "C" {
 #endif
 
-#define MAX_ACTIONS 15
+#define MAX_ACTIONS 20
 
 typedef struct
 {
@@ -33,6 +33,7 @@ typedef struct
 
 void free_config(configuration* config);
 configuration* read_config(char* filename);
+buttonconfiguration** find_actions(configuration* config, int button, int press_id, int state_id);
 
 #ifdef __cplusplus
 }
