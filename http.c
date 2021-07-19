@@ -14,7 +14,13 @@ char response[1000];
 struct hostent *server;
 struct sockaddr_in serveraddr;
 
-int httpget(char* hostname, int port, char* request)
+int http_get_url(char* url)
+{
+    printf("GET %s\n", url);
+    return 0;
+}
+
+int http_get(char* hostname, int port, char* request)
 {
     sprintf(getRequest, "GET %s HTTP/1.1\r\nHost: %s\r\n\r\n", request, hostname);
 

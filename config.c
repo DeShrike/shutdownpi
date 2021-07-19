@@ -6,18 +6,57 @@
 #include "config.h"
 #include "shutdownpi.h"
 
-char* presses[] = { "short", "long", "hold" };
+char* presses[] = { PRESS_SHORT_NAME, PRESS_LONG_NAME, PRESS_HOLD_NAME };
 int press_id[] = { PRESS_SHORT, PRESS_LONG, PRESS_HOLD };
 
-char* states[] = { "IDLE", "RUNNING", "SHUTDOWN_REQUESTED", "SHUTTINGDOWN" };
+char* states[] = { STATE_IDLE_NAME, STATE_RUNNING_NAME, STATE_WAITFORCONFIRM_NAME, STATE_SHUTTINGDOWN_NAME };
 int state_id[] = { STATE_SLEEP, STATE_MOVE, STATE_WAITFORCONFIRM, STATE_SHUTTINGDOWN};
 
-char* actions[] = { "START_RUNNING", "REVERSE", "CANCEL_SHUTDOWN", "REQUEST_SHUTDOWN", "CONFIRM_SHUTDOWN", "GET "};
+char* actions[] = { ACTION_START_RUNNING_NAME, ACTION_REVERSE_NAME, ACTION_CANCEL_SHUTDOWN_NAME, ACTION_REQUEST_SHUTDOWN_NAME, ACTION_CONFIRM_SHUTDOWN_NAME, ACTION_GET_NAME};
 int action_id[] = { ACTION_START_RUNNING, ACTION_REVERSE, ACTION_CANCEL_SHUTDOWN, ACTION_REQUEST_SHUTDOWN, ACTION_CONFIRM_SHUTDOWN, ACTION_GET};
 
 int num_presses = sizeof(presses) / sizeof(char*);
 int num_states = sizeof(states) / sizeof(char*);
 int num_actions = sizeof(actions) / sizeof(char*);
+
+char* press_name(int press)
+{
+    for (int i = 0; i < num_presses; i++)
+    {
+        if (press_id[i] == press)
+        {
+            return presses[i];
+        }
+    }
+
+    return NULL;
+}
+
+char* state_name(int state)
+{
+    for (int i = 0; i < num_states; i++)
+    {
+        if (state_id[i] == state)
+        {
+            return states[i];
+        }
+    }
+
+    return NULL;
+}
+
+char* action_name(int action)
+{
+    for (int i = 0; i < num_actions; i++)
+    {
+        if (action_id[i] == action)
+        {
+            return actions[i];
+        }
+    }
+
+    return NULL;
+}
 
 void free_button_config(buttonconfiguration** config)
 {

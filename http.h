@@ -5,7 +5,8 @@
 extern "C" {
 #endif
 
-int httpget(char* hostname, int port, char* request);
+int http_get(char* hostname, int port, char* request);
+int http_get_url(char* url);
 
 #ifdef __cplusplus
 }
