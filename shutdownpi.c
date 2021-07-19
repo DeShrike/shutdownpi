@@ -17,7 +17,7 @@ static volatile int keepRunning = 1;
 
 // Checkout https://www.youtube.com/watch?v=gymfmJIrc3g
 
-#define CONFIG_FILE         "shutdownpi.ini"
+#define CONFIG_FILE         "/etc/shutdownpi.ini"
 
 #define delayMilliseconds   delay
 
