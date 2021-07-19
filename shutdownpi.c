@@ -32,6 +32,7 @@ static volatile int keepRunning = 1;
 #define LONG_PRESS          3.0
 #define WAITING_TIMEOUT     5.0
 #define MOVE_TIME           30.0    // Go from STATE_MOVE to STATE_SLEEP after this number of seconds
+#define INTERACTIVE_TIME    60.0    // Go from STATE_INTERACTIVE to STATE_MOVE after this number of seconds
 
 #define STEPDELAY           50      // Delay between steps
 
@@ -67,6 +68,7 @@ int state = STATE_MOVE;
 
 struct timespec time_waiting_start;
 struct timespec time_move_start;
+struct timespec time_interactive_start;
 
 void intHandler(int dummy)
 {
@@ -96,7 +98,7 @@ void cleanup()
     PULLUPDNCONTROL(config->button2Pin, PUD_DOWN);
 }
 
-void move()
+void move_leds()
 {
     currentLed = advanceLed(currentLed, direction, LEDCOUNT);
     DIGITALWRITE(config->led1Pin, currentLed == 0 ? HIGH : LOW);
@@ -105,7 +107,16 @@ void move()
     DIGITALWRITE(config->led4Pin, currentLed == 3 ? HIGH : LOW);
 }
 
-void slaap()
+void interactive_leds()
+{
+    currentLed = currentLed == 1 ? 3 : 1;
+    DIGITALWRITE(config->led1Pin, currentLed == 0 ? HIGH : LOW);
+    DIGITALWRITE(config->led2Pin, currentLed == 1 ? HIGH : LOW);
+    DIGITALWRITE(config->led3Pin, currentLed == 2 ? HIGH : LOW);
+    DIGITALWRITE(config->led4Pin, currentLed == 3 ? HIGH : LOW);
+}
+
+void slaap_leds()
 {
     currentLed = advanceLed(currentLed, direction, LEDCOUNT);
     DIGITALWRITE(config->led1Pin, currentLed == 0 ? HIGH : LOW);
@@ -121,7 +132,7 @@ void slaap()
     DIGITALWRITE(config->led4Pin, LOW);
 }
 
-void waitforconfirmation()
+void waitforconfirmation_leds()
 {
     currentLed = (currentLed + 1) % 2;
     DIGITALWRITE(config->led1Pin, LOW);
@@ -130,7 +141,7 @@ void waitforconfirmation()
     DIGITALWRITE(config->led4Pin, LOW);
 }
 
-void shuttingdown()
+void shuttingdown_leds()
 {
     currentLed = (currentLed + 1) % 2;
     DIGITALWRITE(config->led1Pin, currentLed == 1 ? HIGH : LOW);
@@ -144,6 +155,12 @@ void startMoveState()
     state = STATE_MOVE;
     clock_gettime(CLOCK_REALTIME, &time_move_start);
     moveSpeed = INITIALMOVESPEED;
+}
+
+void startInteractiveState()
+{
+    state = STATE_INTERACTIVE;
+    clock_gettime(CLOCK_REALTIME, &time_interactive_start);
 }
 
 void do_actions(int button, int press_id, int state_id)
@@ -169,6 +186,9 @@ void do_actions(int button, int press_id, int state_id)
         {
             case ACTION_START_RUNNING:
                 startMoveState();
+                break;
+            case ACTION_START_INTERACTIVE:
+                startInteractiveState();
                 break;
             case ACTION_CANCEL_SHUTDOWN:
                 printf("sudo shutdown -c \n");
@@ -201,6 +221,11 @@ void do_actions(int button, int press_id, int state_id)
         }
 
         action = *(++actions);
+    }
+
+    if (state_id == STATE_INTERACTIVE)
+    {
+        startInteractiveState();
     }
 
     printf("\n");
@@ -274,11 +299,23 @@ void check_button(buttondata* data)
 
 void loop()
 {
-    if (state == STATE_MOVE)
+    if (state == STATE_INTERACTIVE)
+    {
+        if (currentStep % WAITSPEED == 0)
+        {
+            interactive_leds();
+            double duration = ellapsedSince(&time_interactive_start);
+            if (duration > INTERACTIVE_TIME)
+            {
+                startMoveState();
+            }
+        }
+    }
+    else if (state == STATE_MOVE)
     {
         if (currentStep % moveSpeed == 0)
         {
-            move();
+            move_leds();
             double duration = ellapsedSince(&time_move_start);
             if (duration > MOVE_TIME)
             {
@@ -298,7 +335,7 @@ void loop()
     {
         if (currentStep % SLEEPSPEED == 0)
         {
-            slaap();
+            slaap_leds();
 
             time_t rawtime;
             struct tm * timeinfo;
@@ -316,7 +353,7 @@ void loop()
     {
         if (currentStep % WAITSPEED == 0)
         {
-            waitforconfirmation();
+            waitforconfirmation_leds();
             double duration = ellapsedSince(&time_waiting_start);
             if (duration > WAITING_TIMEOUT)
             {
@@ -328,7 +365,7 @@ void loop()
     {
         if (currentStep % COUNTDOWNSPEED == 0)
         {
-            shuttingdown();
+            shuttingdown_leds();
         }
     }
 
