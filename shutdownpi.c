@@ -4,7 +4,9 @@
 #include <signal.h>
 #include <time.h>
 #include <unistd.h>
+#include "shutdownpi.h"
 #include "utils.h"
+#include "config.h"
 #include "http.h"
 
 static volatile int keepRunning = 1;
@@ -15,15 +17,11 @@ static volatile int keepRunning = 1;
 
 // Checkout https://www.youtube.com/watch?v=gymfmJIrc3g
 
-#define delayMilliseconds     delay
+#define CONFIG_FILE         "/etc/shutdownpi.ini"
 
-#define LEDCOUNT              4
+#define delayMilliseconds   delay
 
-#define STATE_NONE            0
-#define STATE_MOVE            1
-#define STATE_WAITFORCONFIRM  2
-#define STATE_SHUTTINGDOWN    3
-#define STATE_SLEEP           4
+#define LEDCOUNT            4
 
 #define STATE_UP            10
 #define STATE_PRESSED       11
@@ -34,13 +32,32 @@ static volatile int keepRunning = 1;
 #define LONG_PRESS          3.0
 #define WAITING_TIMEOUT     5.0
 #define MOVE_TIME           30.0    // Go from STATE_MOVE to STATE_SLEEP after this number of seconds
+#define INTERACTIVE_TIME    60.0    // Go from STATE_INTERACTIVE to STATE_MOVE after this number of seconds
 
-#define STEPDELAY           50  // Delay between steps
+#define STEPDELAY           50      // Delay between steps
 
-#define INITIALMOVESPEED    10  // 10 * STEPSPEED
+#define INITIALMOVESPEED    10      // 10 * STEPSPEED
 #define WAITSPEED           3
 #define COUNTDOWNSPEED      2
 #define SLEEPSPEED          100
+
+#define PINMODE(p, m)           if (p != 0) { pinMode(p, m); }
+#define PULLUPDNCONTROL(p, m)   if (p != 0) { pullUpDnControl(p, m); }
+#define DIGITALWRITE(p, m)      if (p != 0) { digitalWrite(p, m); }
+#define DIGITALREAD(p)          (p != 0 ? digitalRead(p) : 0)
+
+typedef struct
+{
+    int id;
+    int state;
+    int pin;
+    struct timespec time_pressed;
+    struct timespec time_released;
+} buttondata;
+
+configuration* config;
+buttondata button_1_data;
+buttondata button_2_data;
 
 int currentStep = 0;
 int moveSpeed = INITIALMOVESPEED;
@@ -48,24 +65,10 @@ int currentLed = -1;
 int direction = 1;
 
 int state = STATE_MOVE;
-int button_1_state = STATE_UP;
-int button_2_state = STATE_UP;
-
-struct timespec time_pressed_1;
-struct timespec time_released_1;
-struct timespec time_pressed_2;
-struct timespec time_released_2;
 
 struct timespec time_waiting_start;
 struct timespec time_move_start;
-
-const int ledPin1 = 16;  // GPIO16
-const int ledPin2 = 20;  // GPIO20
-const int ledPin3 = 21;  // GPIO21
-const int ledPin4 = 7;  // GPIO7
-
-const int btnPin1 = 13;   // GPIO13   was GPIO12
-const int btnPin2 = 26;   // GPIO26
+struct timespec time_interactive_start;
 
 void intHandler(int dummy)
 {
@@ -76,63 +79,75 @@ void cleanup()
 {
     printf("Cleanup\n");
 
-    digitalWrite(ledPin1, LOW);
-    digitalWrite(ledPin2, LOW);
-    digitalWrite(ledPin3, LOW);
-    digitalWrite(ledPin4, LOW);
+    DIGITALWRITE(config->led1Pin, LOW);
+    DIGITALWRITE(config->led2Pin, LOW);
+    DIGITALWRITE(config->led3Pin, LOW);
+    DIGITALWRITE(config->led4Pin, LOW);
 
     delayMilliseconds(100);
 
-    pinMode(ledPin1, INPUT);
-    pinMode(ledPin2, INPUT);
-    pinMode(ledPin3, INPUT);
-    pinMode(ledPin4, INPUT);
+    PINMODE(config->led1Pin, INPUT);
+    PINMODE(config->led2Pin, INPUT);
+    PINMODE(config->led3Pin, INPUT);
+    PINMODE(config->led4Pin, INPUT);
+    PINMODE(config->fanPin, INPUT);
 
     delayMilliseconds(100);
 
-    pullUpDnControl(btnPin1, PUD_DOWN);
-    pullUpDnControl(btnPin2, PUD_DOWN);
+    PULLUPDNCONTROL(config->button1Pin, PUD_DOWN);
+    PULLUPDNCONTROL(config->button2Pin, PUD_DOWN);
 }
 
-void move()
+void move_leds()
 {
     currentLed = advanceLed(currentLed, direction, LEDCOUNT);
-    digitalWrite(ledPin1, currentLed == 0 ? HIGH : LOW);
-    digitalWrite(ledPin2, currentLed == 1 ? HIGH : LOW);
-    digitalWrite(ledPin3, currentLed == 2 ? HIGH : LOW);
-    digitalWrite(ledPin4, currentLed == 3 ? HIGH : LOW);
+    DIGITALWRITE(config->led1Pin, currentLed == 0 ? HIGH : LOW);
+    DIGITALWRITE(config->led2Pin, currentLed == 1 ? HIGH : LOW);
+    DIGITALWRITE(config->led3Pin, currentLed == 2 ? HIGH : LOW);
+    DIGITALWRITE(config->led4Pin, currentLed == 3 ? HIGH : LOW);
 }
 
-void slaap()
+void interactive_leds()
+{
+    currentLed = currentLed == 1 ? 3 : 1;
+    DIGITALWRITE(config->led1Pin, currentLed == 0 ? HIGH : LOW);
+    DIGITALWRITE(config->led2Pin, currentLed == 1 ? HIGH : LOW);
+    DIGITALWRITE(config->led3Pin, currentLed == 2 ? HIGH : LOW);
+    DIGITALWRITE(config->led4Pin, currentLed == 3 ? HIGH : LOW);
+}
+
+void slaap_leds()
 {
     currentLed = advanceLed(currentLed, direction, LEDCOUNT);
-    digitalWrite(ledPin1, currentLed == 0 ? HIGH : LOW);
-    digitalWrite(ledPin2, currentLed == 1 ? HIGH : LOW);
-    digitalWrite(ledPin3, currentLed == 2 ? HIGH : LOW);
-    digitalWrite(ledPin4, currentLed == 3 ? HIGH : LOW);
+    DIGITALWRITE(config->led1Pin, currentLed == 0 ? HIGH : LOW);
+    DIGITALWRITE(config->led2Pin, currentLed == 1 ? HIGH : LOW);
+    DIGITALWRITE(config->led3Pin, currentLed == 2 ? HIGH : LOW);
+    DIGITALWRITE(config->led4Pin, currentLed == 3 ? HIGH : LOW);
+
     delayMilliseconds(100);
-    digitalWrite(ledPin1, LOW);
-    digitalWrite(ledPin2, LOW);
-    digitalWrite(ledPin3, LOW);
-    digitalWrite(ledPin4, LOW);
+
+    DIGITALWRITE(config->led1Pin, LOW);
+    DIGITALWRITE(config->led2Pin, LOW);
+    DIGITALWRITE(config->led3Pin, LOW);
+    DIGITALWRITE(config->led4Pin, LOW);
 }
 
-void waitforconfirmation()
+void waitforconfirmation_leds()
 {
     currentLed = (currentLed + 1) % 2;
-    digitalWrite(ledPin1, LOW);
-    digitalWrite(ledPin2, currentLed == 1 ? HIGH : LOW);
-    digitalWrite(ledPin3, LOW);
-    digitalWrite(ledPin4, LOW);
+    DIGITALWRITE(config->led1Pin, LOW);
+    DIGITALWRITE(config->led2Pin, currentLed == 1 ? HIGH : LOW);
+    DIGITALWRITE(config->led3Pin, LOW);
+    DIGITALWRITE(config->led4Pin, LOW);
 }
 
-void shuttingdown()
+void shuttingdown_leds()
 {
     currentLed = (currentLed + 1) % 2;
-    digitalWrite(ledPin1, currentLed == 1 ? HIGH : LOW);
-    digitalWrite(ledPin2, LOW);
-    digitalWrite(ledPin3, LOW);
-    digitalWrite(ledPin4, LOW);
+    DIGITALWRITE(config->led1Pin, currentLed == 1 ? HIGH : LOW);
+    DIGITALWRITE(config->led2Pin, LOW);
+    DIGITALWRITE(config->led3Pin, LOW);
+    DIGITALWRITE(config->led4Pin, LOW);
 }
 
 void startMoveState()
@@ -142,202 +157,165 @@ void startMoveState()
     moveSpeed = INITIALMOVESPEED;
 }
 
-void handle_short_push_1()
+void startInteractiveState()
 {
-    printf("Button 1: Short Press\n");
-    if (state == STATE_SLEEP)
-    {
-        startMoveState();
-    }
-    else if (state == STATE_MOVE)
-    {
-        direction *= -1;
-    }
-    else if (state == STATE_WAITFORCONFIRM)
-    {
-        startMoveState();
-    }
-    else if (state == STATE_SHUTTINGDOWN)
-    {
-        printf("sudo shutdown -c \n");
-        system("sudo shutdown -c");
-        startMoveState();
-    }
+    state = STATE_INTERACTIVE;
+    clock_gettime(CLOCK_REALTIME, &time_interactive_start);
 }
 
-void handle_long_push_1()
+void do_actions(int button, int press_id, int state_id)
 {
-    printf("Button 1: Long Press\n");
-    if (state == STATE_SLEEP)
-    {
-        startMoveState();
-    }
-    else if (state == STATE_MOVE)
-    {
-        direction *= -1;
-    }
-    else if (state == STATE_WAITFORCONFIRM)
-    {
-        state = STATE_SHUTTINGDOWN;
-        printf("sudo shutdown +1 -hP \n");
-        system("sudo shutdown +1 -hP");
-    }
-    else if (state == STATE_SHUTTINGDOWN)
-    {
-        printf("sudo shutdown -c \n");
-        system("sudo shutdown -c");
-        startMoveState();
-    }
-}
+    buttonconfiguration** actions;
+    actions = find_actions(config, button, press_id, state_id);
+    buttonconfiguration* action = *actions;
 
-void handle_super_long_push_1()
-{
-    printf("Button 1: Super Long Press\n");
-    if (state == STATE_MOVE)
+    while (action != NULL)
     {
-        clock_gettime(CLOCK_REALTIME, &time_waiting_start);
-        state = STATE_WAITFORCONFIRM;
-    }
-}
+        printf("Action %p\n", (void*)actions);
+        printf("  Button: %d\n", action->button);
+        printf("   Press: %d - %s\n", action->press_id, press_name(action->press_id));
+        printf("   State: %d - %s\n", action->state_id, state_name(action->state_id));
+        printf("  Action: %d - %s\n", action->action_id, action_name(action->action_id));
 
-void handle_short_push_2()
-{
-    printf("Button 2: Short Press\n");
-}
-
-void handle_long_push_2()
-{
-    printf("Button 2: Long Press\n");
-}
-
-void handle_super_long_push_2()
-{
-    printf("Button 2: Super Long Press\n");
-}
-
-void check_button_1()
-{
-    ////////////////////////////////////////////////////////////////////////////////
-    // Button 1 ////////////////////////////////////////////////////////////////////
-    ////////////////////////////////////////////////////////////////////////////////
-    if (digitalRead(btnPin1) == HIGH) // Button 1 is not pressed
-    {
-        if (button_1_state == STATE_DOWN)
+        if (action->action_param != NULL)
         {
-            button_1_state = STATE_RELEASED;
-            clock_gettime(CLOCK_REALTIME, &time_released_1);
-            double duration = calcDuration(&time_pressed_1, &time_released_1);
+            printf("   Param: %s\n", action->action_param);
+        }
+
+        switch (action->action_id)
+        {
+            case ACTION_START_RUNNING:
+                startMoveState();
+                break;
+            case ACTION_START_INTERACTIVE:
+                startInteractiveState();
+                break;
+            case ACTION_CANCEL_SHUTDOWN:
+                printf("sudo shutdown -c \n");
+                system("sudo shutdown -c");
+                startMoveState();
+                break;
+            case ACTION_REQUEST_SHUTDOWN:
+                clock_gettime(CLOCK_REALTIME, &time_waiting_start);
+                state = STATE_WAITFORCONFIRM;
+                break;
+            case ACTION_CONFIRM_SHUTDOWN:
+                state = STATE_SHUTTINGDOWN;
+                printf("sudo shutdown +1 -hP \n");
+                system("sudo shutdown +1 -hP");
+                break;
+            case ACTION_REVERSE:
+                direction *= -1;
+                break;
+            case ACTION_GET:
+                if (action->action_param != NULL)
+                {
+                    http_get_url(action->action_param);
+                }
+                else
+                {
+                    printf("Missing parameter for action GET\n");
+                }
+
+                break;
+        }
+
+        action = *(++actions);
+    }
+
+    if (state_id == STATE_INTERACTIVE)
+    {
+        startInteractiveState();
+    }
+
+    printf("\n");
+}
+
+void handle_button_press(buttondata* data, int press_id)
+{
+    printf("Button %d: Press %s - %d\n", data->id, press_name(press_id), press_id);
+    do_actions(data->id, press_id, state);
+}
+
+void check_button(buttondata* data)
+{
+    // printf("Check button %d - Pin %d (%d)\n", data->id, data->pin, data->state);
+    if (DIGITALREAD(data->pin) == HIGH)
+    {
+        if (data->state == STATE_DOWN)
+        {
+            data->state = STATE_RELEASED;
+            clock_gettime(CLOCK_REALTIME, &data->time_released);
+            double duration = calcDuration(&data->time_pressed, &data->time_released);
             if (duration < SHORT_PRESS)
             {
-                handle_short_push_1();
+                handle_button_press(data, PRESS_SHORT);
             }
             else if (duration > LONG_PRESS)
             {
             }
             else
             {
-                handle_long_push_1();
+                handle_button_press(data, PRESS_LONG);
             }
 
-            button_1_state = STATE_UP;
+            data->state = STATE_UP;
         }
-        else if (button_1_state != STATE_UP)
+        else if (data->state != STATE_UP)
         {
-            printf("Strange: Button 1 State is %d\n", button_1_state);
-            button_1_state = STATE_UP;
+            // printf("Strange: Button %d State is %d\n", data->id, data->state);
+            data->state = STATE_UP;
         }
     }
-    else // Button 1 is pressed
+    else // Button is pressed
     {
-        if (button_1_state == STATE_PRESSED)
+        // printf("Pressed %d\n", data->id);
+        if (data->state == STATE_PRESSED)
         {
-            button_1_state = STATE_DOWN;
+            data->state = STATE_DOWN;
         }
-        else if (button_1_state == STATE_UP)
+        else if (data->state == STATE_UP)
         {
-            button_1_state = STATE_PRESSED;
-            clock_gettime(CLOCK_REALTIME, &time_pressed_1);
+            data->state = STATE_PRESSED;
+            clock_gettime(CLOCK_REALTIME, &data->time_pressed);
         }
-        else if (button_1_state == STATE_DOWN)
+        else if (data->state == STATE_DOWN)
         {
-            double duration = ellapsedSince(&time_pressed_1);
+            double duration = ellapsedSince(&data->time_pressed);
             if (duration > LONG_PRESS)
             {
-                handle_super_long_push_1();
+                clock_gettime(CLOCK_REALTIME, &data->time_pressed);
+                data->state = STATE_RELEASED;
+                handle_button_press(data, PRESS_HOLD);
             }
         }
         else
         {
-            printf("Hmm, Button 1 State = %d\n", button_1_state);
-        }
-    }
-}
-
-void check_button_2()
-{
-    ////////////////////////////////////////////////////////////////////////////////
-    // Button 2 ////////////////////////////////////////////////////////////////////
-    ////////////////////////////////////////////////////////////////////////////////
-    if (digitalRead(btnPin2) == HIGH) // Button 2 is not pressed
-    {
-        if (button_2_state == STATE_DOWN)
-        {
-            button_2_state = STATE_RELEASED;
-            clock_gettime(CLOCK_REALTIME, &time_released_2);
-            double duration = calcDuration(&time_pressed_2, &time_released_2);
-            if (duration < SHORT_PRESS)
-            {
-                handle_short_push_2();
-            }
-            else if (duration > LONG_PRESS)
-            {
-            }
-            else
-            {
-                handle_long_push_2();
-            }
-
-            button_2_state = STATE_UP;
-        }
-        else if (button_2_state != STATE_UP)
-        {
-            printf("Strange: Button 2 State is %d\n", button_2_state);
-            button_2_state = STATE_UP;
-        }
-    }
-    else // Button 2 is pressed
-    {
-        if (button_2_state == STATE_PRESSED)
-        {
-            button_2_state = STATE_DOWN;
-        }
-        else if (button_2_state == STATE_UP)
-        {
-            button_2_state = STATE_PRESSED;
-            clock_gettime(CLOCK_REALTIME, &time_pressed_2);
-        }
-        else if (button_2_state == STATE_DOWN)
-        {
-            double duration = ellapsedSince(&time_pressed_2);
-            if (duration > LONG_PRESS)
-            {
-                handle_super_long_push_2();
-            }
-        }
-        else
-        {
-            printf("Hmm, Button 2 State = %d\n", button_2_state);
+            // NOOP
+            // printf("Hmm, Button %d State = %d\n", data->id, data->state);
         }
     }
 }
 
 void loop()
 {
-    if (state == STATE_MOVE)
+    if (state == STATE_INTERACTIVE)
+    {
+        if (currentStep % WAITSPEED == 0)
+        {
+            interactive_leds();
+            double duration = ellapsedSince(&time_interactive_start);
+            if (duration > INTERACTIVE_TIME)
+            {
+                startMoveState();
+            }
+        }
+    }
+    else if (state == STATE_MOVE)
     {
         if (currentStep % moveSpeed == 0)
         {
-            move();
+            move_leds();
             double duration = ellapsedSince(&time_move_start);
             if (duration > MOVE_TIME)
             {
@@ -357,7 +335,7 @@ void loop()
     {
         if (currentStep % SLEEPSPEED == 0)
         {
-            slaap();
+            slaap_leds();
 
             time_t rawtime;
             struct tm * timeinfo;
@@ -375,7 +353,7 @@ void loop()
     {
         if (currentStep % WAITSPEED == 0)
         {
-            waitforconfirmation();
+            waitforconfirmation_leds();
             double duration = ellapsedSince(&time_waiting_start);
             if (duration > WAITING_TIMEOUT)
             {
@@ -387,18 +365,18 @@ void loop()
     {
         if (currentStep % COUNTDOWNSPEED == 0)
         {
-            shuttingdown();
+            shuttingdown_leds();
         }
     }
 
-    check_button_1();
-    check_button_2();
+    check_button(&button_1_data);
+    check_button(&button_2_data);
 
     delayMilliseconds(STEPDELAY);
     currentStep++;
 }
 
-int main()
+int start()
 {
     signal(SIGKILL, intHandler);
     signal(SIGINT, intHandler);
@@ -407,19 +385,29 @@ int main()
 
     wiringPiSetupGpio();  // setup wih Broadcom numbering
 
-    pinMode(ledPin1, OUTPUT);
-    pinMode(ledPin2, OUTPUT);
-    pinMode(ledPin3, OUTPUT);
-    pinMode(ledPin4, OUTPUT);
+    PINMODE(config->led1Pin, OUTPUT);
+    PINMODE(config->led2Pin, OUTPUT);
+    PINMODE(config->led3Pin, OUTPUT);
+    PINMODE(config->led4Pin, OUTPUT);
 
-    pinMode(btnPin1, INPUT);
-    pinMode(btnPin2, INPUT);
-    pullUpDnControl(btnPin1, PUD_UP); // Enable pull-up resistor on button
-    pullUpDnControl(btnPin2, PUD_UP); // Enable pull-up resistor on button
+    PINMODE(config->fanPin, OUTPUT);
+
+    PINMODE(config->button1Pin, INPUT);
+    PINMODE(config->button2Pin, INPUT);
+    PULLUPDNCONTROL(config->button1Pin, PUD_UP); // Enable pull-up resistor on button
+    PULLUPDNCONTROL(config->button2Pin, PUD_UP); // Enable pull-up resistor on button
 
     printf("Running! Press Ctrl+C to quit. \n");
 
     startMoveState();
+
+    button_1_data.id = 1;
+    button_1_data.pin = config->button1Pin;
+    button_1_data.state = STATE_UP;
+
+    button_2_data.id = 2;
+    button_2_data.pin = config->button2Pin;
+    button_2_data.state = STATE_UP;
 
     while (keepRunning)
     {
@@ -430,4 +418,37 @@ int main()
     cleanup();
 
     return 0;
+}
+
+void show_config(configuration* config)
+{
+    printf("Config loaded from '%s':\n", CONFIG_FILE);
+
+    printf("     led1: %d \n     led2: %d \n     led3: %d \n     led4: %d \n  button1: %d \n  button2: %d \n      fan: %d \n",
+        config->led1Pin, config->led2Pin, config->led3Pin, config->led4Pin,
+        config->button1Pin, config->button2Pin,
+        config->fanPin);
+
+    printf("Fan ON: %d\n", config->fanOn);
+    printf("Fan OFF: %d\n", config->fanOff);
+
+    printf("\nName: %s\n", config->name);
+}
+
+int main(int argc, char* argv[])
+{
+    config = read_config(CONFIG_FILE);
+    if (config == NULL)
+    {
+        printf("Can't load '%s'\n", CONFIG_FILE);
+        return 1;
+    }
+
+    // show_config(config);
+
+    int ret = start();
+
+    free_config(config);
+
+    return ret;
 }
