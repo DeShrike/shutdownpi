@@ -165,10 +165,6 @@ int handler(void* config, const char* section, const char* name,
     {
         pconfig->led4Pin = atoi(value);
     }
-    else if (MATCH("pins", "fan"))
-    {
-        pconfig->fanPin = atoi(value);
-    }
     else if (MATCH("pins", "button1"))
     {
         pconfig->button1Pin = atoi(value);
@@ -176,14 +172,6 @@ int handler(void* config, const char* section, const char* name,
     else if (MATCH("pins", "button2"))
     {
         pconfig->button2Pin = atoi(value);
-    }
-    else if (MATCH("fan", "on"))
-    {
-        pconfig->fanOn = atoi(value);
-    }
-    else if (MATCH("fan", "off"))
-    {
-        pconfig->fanOff = atoi(value);
     }
     else if (MATCH("user", "name"))
     {
@@ -272,7 +260,6 @@ configuration* read_config(char* filename)
 
     if (ini_parse(filename, handler, config) < 0)
     {
-        printf("Can't load 'initest.ini'\n");
         return NULL;
     }
 

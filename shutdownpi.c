@@ -90,7 +90,6 @@ void cleanup()
     PINMODE(config->led2Pin, INPUT);
     PINMODE(config->led3Pin, INPUT);
     PINMODE(config->led4Pin, INPUT);
-    PINMODE(config->fanPin, INPUT);
 
     delayMilliseconds(100);
 
@@ -390,8 +389,6 @@ int start()
     PINMODE(config->led3Pin, OUTPUT);
     PINMODE(config->led4Pin, OUTPUT);
 
-    PINMODE(config->fanPin, OUTPUT);
-
     PINMODE(config->button1Pin, INPUT);
     PINMODE(config->button2Pin, INPUT);
     PULLUPDNCONTROL(config->button1Pin, PUD_UP); // Enable pull-up resistor on button
@@ -424,13 +421,9 @@ void show_config(configuration* config)
 {
     printf("Config loaded from '%s':\n", CONFIG_FILE);
 
-    printf("     led1: %d \n     led2: %d \n     led3: %d \n     led4: %d \n  button1: %d \n  button2: %d \n      fan: %d \n",
+    printf("     led1: %d \n     led2: %d \n     led3: %d \n     led4: %d \n  button1: %d \n  button2: %d \n",
         config->led1Pin, config->led2Pin, config->led3Pin, config->led4Pin,
-        config->button1Pin, config->button2Pin,
-        config->fanPin);
-
-    printf("Fan ON: %d\n", config->fanOn);
-    printf("Fan OFF: %d\n", config->fanOff);
+        config->button1Pin, config->button2Pin);
 
     printf("\nName: %s\n", config->name);
 }
@@ -440,15 +433,15 @@ int main(int argc, char* argv[])
     config = read_config(CONFIG_FILE);
     if (config == NULL)
     {
-        printf("Can't load '%s'\n", CONFIG_FILE);
-        return 1;
+        fprintf(stderr, "Can't load '%s'\n", CONFIG_FILE);
+        return EXIT_FAILURE;
     }
 
     // show_config(config);
 
-    int ret = start();
+    start();
 
     free_config(config);
 
-    return ret;
+    return EXIT_SUCCESS;
 }

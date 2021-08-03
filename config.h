@@ -22,13 +22,10 @@ typedef struct
     int led2Pin;
     int led3Pin;
     int led4Pin;
-    int fanPin;
     int button1Pin;
     int button2Pin;
     buttonconfiguration* buttonconfig[MAX_ACTIONS];
     char* name;
-    int fanOn;
-    int fanOff;
 } configuration;
 
 void free_config(configuration* config);
