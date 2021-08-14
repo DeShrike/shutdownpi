@@ -1,28 +1,31 @@
 CC=gcc
 AR=ar
+LIBS=-lwiringPi
+CFLAGS=-Wall -O3
+OBJ=shutdownpi.o utils.o http.o ini.o config.o
 
 all: shutdownpi
 
 rmbin:
 	rm shutdownpi
 
-shutdownpi: shutdownpi.o utils.o http.o ini.o config.o
-	$(CC) -o shutdownpi shutdownpi.o utils.o ini.o config.o http.o -l wiringPi
+shutdownpi: $(OBJ)
+	$(CC) -o shutdownpi $(OBJ) $(LIBS)
 
 shutdownpi.o: shutdownpi.c utils.h http.h config.h shutdownpi.h
-	$(CC) -c -Wall -O3 shutdownpi.c
+	$(CC) -c $(CFLAGS) shutdownpi.c
 
 utils.o: utils.c utils.h
-	$(CC) -c -Wall -O3 utils.c
+	$(CC) -c $(CFLAGS) utils.c
 
 http.o: http.c http.h
-	$(CC) -c -Wall -O3 http.c
+	$(CC) -c $(CFLAGS) http.c
 
 config.o: config.c config.h utils.h shutdownpi.h
-	$(CC) -c -Wall -O3 config.c
+	$(CC) -c $(CFLAGS) config.c
 
 ini.o: ini.c ini.h
-	$(CC) -c -Wall -O3 ini.c
+	$(CC) -c $(CFLAGS) ini.c
 
 clean:
 	rm *.o
