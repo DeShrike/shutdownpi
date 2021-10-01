@@ -4,12 +4,15 @@ After=network.target
 StartLimitIntervalSec=0
 
 [Service]
+WorkingDirectory=/tmp
 Type=simple
 Restart=always
 RestartSec=5
+SyslogIdentifier=shutdownpi
 User=pi
 ExecStart=/usr/bin/shutdownpi
 WorkingDirectory=/home/pi
+Environment=DUMMYENV=dummy-env
 
 [Install]
 WantedBy=multi-user.target
